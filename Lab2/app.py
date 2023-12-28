@@ -1,74 +1,97 @@
-import hashlib
-import random
-import math
+from Crypto.Cipher import PKCS1_OAEP
+from Crypto.Hash import SHA256
+from Crypto.PublicKey import RSA
+from Crypto.Signature import pkcs1_15
 
 
-def generate_rsa_keypair():
-    # Generate RSA key pair
-    p = 61  # Example prime number, choose larger primes in real-world scenarios
-    q = 53  # Example prime number, choose larger primes in real-world scenarios
-    n = p * q
-    phi = (p - 1) * (q - 1)
+class Voter:
+    def __init__(self, name, has_voted=False):
+        self.name = name
+        self.has_voted = has_voted
 
-    # Choose e such that 1 < e < phi and gcd(e, phi) = 1
-    e = random.randint(2, phi - 1)
-    while math.gcd(e, phi) != 1:
-        e = random.randint(2, phi - 1)
-
-    # Calculate d, the modular multiplicative inverse of e (d * e % phi = 1)
-    d = pow(e, -1, phi)
-
-    return ((e, n), (d, n))
+    def vote(self):
+        if not self.has_voted:
+            print(f"{self.name}, виберіть кандидата:")
+            vote = int(input())
+            self.has_voted = True
+            return vote
+        else:
+            print(f"{self.name}, вже голосував")
 
 
-def blind_sign_message(message, private_key):
-    # Blind sign a message using RSA
-    m = int(hashlib.sha256(str(message).encode()).hexdigest(), 16)
-    return pow(m, private_key[0], private_key[1])
+class Candidate:
+    def __init__(self, name):
+        self.name = name
+        self.votes = 0
+
+
+class ElectionAuthority:
+    def __init__(self, voters=[], candidates=[]):
+        key = RSA.generate(2048)
+        self.private_key = key.export_key()
+        self.public_key = key.publickey().export_key()
+        self.votes = []
+        self.candidates = candidates
+        self.voters = voters
+
+    def __encrypt_vote(self, vote, public_key):
+        cipher = PKCS1_OAEP.new(RSA.import_key(public_key))
+        return cipher.encrypt(str(vote).encode())
+
+    def __decrypt_vote(self, encrypted_vote):
+        cipher = PKCS1_OAEP.new(RSA.import_key(self.private_key))
+        decrypted_vote = cipher.decrypt(encrypted_vote)
+        return int(decrypted_vote.decode())
+
+    def __blind_sign(self, message):
+        h = SHA256.new(message)
+        return pkcs1_15.new(RSA.import_key(self.private_key)).sign(h)
+
+    def __is_valid_signature(self, blinded_message, blinded_signature):
+        h = SHA256.new(blinded_message)  # Hash the blinded message
+        try:
+            pkcs1_15.new(RSA.import_key(self.public_key)).verify(h, blinded_signature)
+            return True
+        except (ValueError, TypeError, pkcs1_15.pkcs1_15Error):
+            return False
+
+    def calculate_results(self):
+        # Етап підведення підсумків
+        for vote in self.votes:
+            message = vote[0]
+            signature = vote[1]
+            if self.__is_valid_signature(message, signature):
+                decrypted_message = self.__decrypt_vote(message)
+                self.candidates[decrypted_message - 1].votes += 1
+
+    def print_results(self):
+        print("Результати голосування:")
+        for candidate in self.candidates:
+            print(f"{candidate.name}: {candidate.votes} голосів")
+
+    def election(self):
+        # Етап голосування
+        for voter in self.voters:
+            vote = voter.vote()
+            if vote is not None:
+                if 1 <= vote <= len(self.candidates):
+                    encrypted_vote = self.__encrypt_vote(vote, self.public_key)
+                    blind_signature = self.__blind_sign(encrypted_vote)
+                    self.votes.append((encrypted_vote, blind_signature))
+                    print("Голос зараховано.")
+                else:
+                    print("Неправильний варіант, спорчений бюлетень.")
 
 
 def main():
-    # Simulate the election process with 2 candidates and 4 voters
-    candidates = {1: "Candidate A", 2: "Candidate B"}
-    voters = []
+    # Етап реєстрації виборців та кандидатів
+    voters = [Voter("Voter1"), Voter("Voter2"), Voter("Voter3"), Voter("Voter4")]
+    candidates = [Candidate("Candidate1"), Candidate("Candidate2")]
 
-    # Generate RSA key pairs for voters and authority
-    authority_keypair = generate_rsa_keypair()
-    for i in range(4):
-        voters.append({
-            'id': i + 1,
-            'keypair': generate_rsa_keypair(),
-            'vote': None
-        })
-
-    # Voting phase
-    for voter in voters:
-        candidate_id = random.choice(list(candidates.keys()))
-        # Blind the vote
-        blinded_vote = pow(candidate_id, voter['keypair'][0][0], voter['keypair'][0][1])
-        # Sign the blinded vote
-        signed_blind_vote = blind_sign_message(blinded_vote, authority_keypair[1])
-        # Store the blinded and signed vote
-        voter['vote'] = (blinded_vote, signed_blind_vote)
-
-    # Tally the votes
-    tally = {candidate: 0 for candidate in candidates.values()}
-    for voter in voters:
-        for candidate_id, candidate_name in candidates.items():
-            # Unblind the vote
-            unblinded_vote = pow(voter['vote'][0], voter['keypair'][1][0],
-                                 voter['keypair'][1][1])
-            if unblinded_vote == candidate_id:
-                # Verify the signature before counting the vote
-                hashed_vote = hashlib.sha256(str(voter['vote'][0]).encode()).hexdigest()
-                if pow(voter['vote'][1], authority_keypair[0][0],
-                       authority_keypair[0][1]) == int(hashed_vote, 16):
-                    tally[candidate_name] += 1
-
-    # Display the results
-    print("Election Results:")
-    for candidate, votes in tally.items():
-        print(f"{candidate}: {votes} votes")
+    authority = ElectionAuthority(voters=voters, candidates=candidates)
+    authority.election()
+    authority.calculate_results()
+    authority.print_results()
 
 
 if __name__ == "__main__":
