@@ -102,8 +102,12 @@ class ElectionAuthority:
         print(f"Signed messages sent to {voter.voter_id}.")
 
     def receive_encrypted_ballot(self, encrypted_ballot, voter_id):
-        # Simulating receiving encrypted ballot from a voter
         decrypted_ballot = self.decrypt_ballot(encrypted_ballot, self.private_key)
+        # check if already voted
+        for vote in self.votes:
+            if vote[1] == voter_id:
+                print(f"{voter_id} already voted! Ignoring duplicated vote ")
+                return
         self.votes.append((decrypted_ballot, voter_id))
         print(f"Received encrypted ballot from {voter_id}: {decrypted_ballot}")
 
