@@ -8,13 +8,14 @@ class Voter:
     def __init__(self, name, has_voted=False):
         self.name = name
         self.has_voted = has_voted
+        self.vote = None
 
     def vote(self):
         if not self.has_voted:
             print(f"{self.name}, виберіть кандидата:")
-            vote = int(input())
+            self.vote = int(input())
             self.has_voted = True
-            return vote
+            return self.vote
         else:
             print(f"{self.name}, вже голосував")
 
