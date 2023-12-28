@@ -1,26 +1,31 @@
 import random
-
+import secrets
+from Crypto import Random
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import ElGamal
+from Crypto.Cipher import PKCS1_OAEP
 from Crypto.Signature import DSS
 
-
 class Voter:
-    def __init__(self, name):
-        self.name = name
+    def __init__(self, name, registry):
+        self.id = name
         self.election_vote = None
+        self.registration_number = registry.generate_registration_number(self.id)
 
-    def vote(self):
-        print(f"{self.name}, виберіть кандидата:")
+    def vote(self, authority):
+        print(f"{self.id}, виберіть кандидата (введіть номер):")
         self.election_vote = int(input())
-        return self.election_vote
-
+        encrypted_ballot, signature = authority.receive_vote(self.id, self.registration_number, self.election_vote)
+        print(encrypted_ballot, signature)
+        if encrypted_ballot and signature:
+            print("Ваш голос успішно зашифровано та підписано.")
+        else:
+            print("Помилка при обробці голосу.")
 
 class Candidate:
     def __init__(self, name):
         self.name = name
         self.votes = 0
-
 
 class BallotRegistry:
     def __init__(self):
@@ -31,7 +36,6 @@ class BallotRegistry:
         self.registration_numbers[registration_number] = voter_id
         return registration_number
 
-
 class ElectionAuthority:
     def __init__(self, ballot_registry, candidates):
         self.ballot_registry = ballot_registry
@@ -39,100 +43,57 @@ class ElectionAuthority:
         self.votes = {}
         self.candidates = candidates
 
-    def receive_registration_request(self, voter_id):
-        return self.ballot_registry.provide_registration_number(voter_id)
-
-    def receive_vote(self, voter_id, registration_number, encrypted_ballot, signature):
+    def receive_vote(self, voter_id, registration_number, election_vote):
         if registration_number in self.ballot_registry.registration_numbers and \
-            registration_number not in self.registered_voters:
-            if self.verify_signature(encrypted_ballot, signature,
-                                     self.ballot_registry.registration_numbers[
-                                         registration_number]):
+                registration_number not in self.registered_voters:
+            encrypted_ballot, signature = self.encrypt_vote(election_vote)
+            if encrypted_ballot and signature:
                 self.registered_voters.add(registration_number)
-                self.votes[voter_id] = (registration_number, encrypted_ballot)
-                return True
-        return False
+                self.votes[voter_id] = (registration_number, encrypted_ballot, signature)
+                return encrypted_ballot, signature
+        return None, None
 
-    def verify_signature(self, encrypted_ballot, signature, voter_id):
+    def generate_random_bytes(self, N):
+        random_bytes = Random.new().read(N)
+        return random_bytes
+
+    def encrypt_vote(self, election_vote):
+        # Simplified encryption for demonstration purposes
+        print(election_vote)
+        elgamal_key = ElGamal.generate(2048, self.generate_random_bytes)
+        print(elgamal_key)
+        cipher = PKCS1_OAEP.new(elgamal_key.publickey())
+        encrypted_ballot = cipher.encrypt(str(election_vote).encode())
+        # Sign the encrypted vote
         h = SHA256.new(encrypted_ballot)
-        verifier = DSS.new(voter_id.elgamal_key.publickey(), 'fips-186-3')
-        try:
-            verifier.verify(h, signature)
-            return True
-        except ValueError:
-            return False
+        signer = DSS.new(elgamal_key, 'fips-186-3')
+        signature = signer.sign(h)
+        return encrypted_ballot, signature
 
     def publish_results(self):
         print("Election Results:")
-        for voter_id, (registration_number, encrypted_ballot) in self.votes.items():
+        for voter_id, (registration_number, encrypted_ballot, _) in self.votes.items():
             candidate_index = self.decrypt_ballot(encrypted_ballot)
             candidate = self.candidates[candidate_index]
-            print(
-                f"Voter {voter_id}: Registration Number - {registration_number}, Voted for - {candidate}")
+            print(f"Voter {voter_id}: Registration Number - {registration_number}, Voted for - {candidate.name}")
 
     def decrypt_ballot(self, encrypted_ballot):
         # Simplified decryption for demonstration purposes
-        return int(encrypted_ballot.decode())
-
+        elgamal_key = ElGamal.generate(2048, self.generate_random_bytes)
+        cipher = PKCS1_OAEP.new(elgamal_key)
+        decrypted_ballot = int(cipher.decrypt(encrypted_ballot).decode())
+        return decrypted_ballot
 
 def main():
-    # Create BallotRegistry and VotingCommission with two candidates
+    candidates = [Candidate("Candidate 1"), Candidate("Candidate 2")]
     ballot_registry = BallotRegistry()
-    candidates = ["Candidate A", "Candidate B"]
-    commission1 = VotingCommission(ballot_registry, candidates)
-    commission2 = VotingCommission(ballot_registry, candidates)
+    authority = ElectionAuthority(ballot_registry, candidates)
+    voters = [Voter(f"Voter{i}", ballot_registry) for i in range(1, 5)]
 
-    # Voter registration process
-    voter_id1 = "Alice"
-    registration_number1 = commission1.receive_registration_request(voter_id1)
+    for voter in voters:
+        voter.vote(authority)
 
-    voter_id2 = "Bob"
-    registration_number2 = commission2.receive_registration_request(voter_id2)
-
-    voter_id3 = "Charlie"
-    registration_number3 = commission1.receive_registration_request(voter_id3)
-
-    voter_id4 = "David"
-    registration_number4 = commission2.receive_registration_request(voter_id4)
-
-    # Voting process
-    elgamal_key1 = ElGamal.generate(2048)
-    elgamal_key2 = ElGamal.generate(2048)
-
-    # Encrypt the ballots with ElGamal
-    encrypted_ballot1 = elgamal_key1.publickey().encrypt(
-        str(random.randint(0, len(candidates) - 1)).encode(),
-        random.randint(1, elgamal_key1.p - 2))
-    encrypted_ballot2 = elgamal_key2.publickey().encrypt(
-        str(random.randint(0, len(candidates) - 1)).encode(),
-        random.randint(1, elgamal_key2.p - 2))
-    encrypted_ballot3 = elgamal_key1.publickey().encrypt(
-        str(random.randint(0, len(candidates) - 1)).encode(),
-        random.randint(1, elgamal_key1.p - 2))
-    encrypted_ballot4 = elgamal_key2.publickey().encrypt(
-        str(random.randint(0, len(candidates) - 1)).encode(),
-        random.randint(1, elgamal_key2.p - 2))
-
-    # Sign the encrypted ballots with DSA
-    signature1 = DSS.new(elgamal_key1, 'fips-186-3').sign(SHA256.new(encrypted_ballot1))
-    signature2 = DSS.new(elgamal_key2, 'fips-186-3').sign(SHA256.new(encrypted_ballot2))
-    signature3 = DSS.new(elgamal_key1, 'fips-186-3').sign(SHA256.new(encrypted_ballot3))
-    signature4 = DSS.new(elgamal_key2, 'fips-186-3').sign(SHA256.new(encrypted_ballot4))
-
-    # Submit votes
-    commission1.receive_vote(voter_id1, registration_number1, encrypted_ballot1,
-                             signature1)
-    commission2.receive_vote(voter_id2, registration_number2, encrypted_ballot2,
-                             signature2)
-    commission1.receive_vote(voter_id3, registration_number3, encrypted_ballot3,
-                             signature3)
-    commission2.receive_vote(voter_id4, registration_number4, encrypted_ballot4,
-                             signature4)
-
-    # Publishing results
-    commission1.publish_results()
-    commission2.publish_results()
-
+    authority.publish_results()
 
 if __name__ == "__main__":
     main()
