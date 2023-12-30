@@ -1,10 +1,11 @@
 import random
-import secrets
+
 from Crypto import Random
+from Crypto.Cipher import PKCS1_OAEP
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import ElGamal
-from Crypto.Cipher import PKCS1_OAEP
 from Crypto.Signature import DSS
+
 
 class Voter:
     def __init__(self, name, registry):
@@ -15,17 +16,21 @@ class Voter:
     def vote(self, authority):
         print(f"{self.id}, виберіть кандидата (введіть номер):")
         self.election_vote = int(input())
-        encrypted_ballot, signature = authority.receive_vote(self.id, self.registration_number, self.election_vote)
+        encrypted_ballot, signature = authority.receive_vote(self.id,
+                                                             self.registration_number,
+                                                             self.election_vote)
         print(encrypted_ballot, signature)
         if encrypted_ballot and signature:
             print("Ваш голос успішно зашифровано та підписано.")
         else:
             print("Помилка при обробці голосу.")
 
+
 class Candidate:
     def __init__(self, name):
         self.name = name
         self.votes = 0
+
 
 class BallotRegistry:
     def __init__(self):
@@ -36,6 +41,7 @@ class BallotRegistry:
         self.registration_numbers[registration_number] = voter_id
         return registration_number
 
+
 class ElectionAuthority:
     def __init__(self, ballot_registry, candidates):
         self.ballot_registry = ballot_registry
@@ -45,11 +51,12 @@ class ElectionAuthority:
 
     def receive_vote(self, voter_id, registration_number, election_vote):
         if registration_number in self.ballot_registry.registration_numbers and \
-                registration_number not in self.registered_voters:
+            registration_number not in self.registered_voters:
             encrypted_ballot, signature = self.encrypt_vote(election_vote)
             if encrypted_ballot and signature:
                 self.registered_voters.add(registration_number)
-                self.votes[voter_id] = (registration_number, encrypted_ballot, signature)
+                self.votes[voter_id] = (
+                registration_number, encrypted_ballot, signature)
                 return encrypted_ballot, signature
         return None, None
 
@@ -75,7 +82,8 @@ class ElectionAuthority:
         for voter_id, (registration_number, encrypted_ballot, _) in self.votes.items():
             candidate_index = self.decrypt_ballot(encrypted_ballot)
             candidate = self.candidates[candidate_index]
-            print(f"Voter {voter_id}: Registration Number - {registration_number}, Voted for - {candidate.name}")
+            print(
+                f"Voter {voter_id}: Registration Number - {registration_number}, Voted for - {candidate.name}")
 
     def decrypt_ballot(self, encrypted_ballot):
         # Simplified decryption for demonstration purposes
@@ -83,6 +91,7 @@ class ElectionAuthority:
         cipher = PKCS1_OAEP.new(elgamal_key)
         decrypted_ballot = int(cipher.decrypt(encrypted_ballot).decode())
         return decrypted_ballot
+
 
 def main():
     candidates = [Candidate("Candidate 1"), Candidate("Candidate 2")]
@@ -94,6 +103,7 @@ def main():
         voter.vote(authority)
 
     authority.publish_results()
+
 
 if __name__ == "__main__":
     main()
