@@ -64,27 +64,29 @@ class ElectionAuthority:
                                                          self.voters[0].rsa_public_key)
                 self.ballots.append((encrypted_ballot, voter.elgamal_private_key))
 
-        # Shuffling Phase
-        shuffled_ballots = random.sample(self.ballots, len(self.ballots))
-        for i in range(len(self.ballots)):
-            self.ballots[i] = shuffled_ballots[i]
+        for voter in self.voters:
+            print(f"Voter {voter.id} is doing shuffling...")
+            # Shuffling Phase
+            shuffled_ballots = random.sample(self.ballots, len(self.ballots))
+            for i in range(len(self.ballots)):
+                self.ballots[i] = shuffled_ballots[i]
 
-        # Verification and Signing Phase
-        for i, (encrypted_ballot, private_key) in enumerate(self.ballots):
-            decrypted_ballot = self.voters[i].decrypt_message(encrypted_ballot,
-                                                              private_key)
-            if self.voters[i].can_vote and decrypted_ballot not in self.candidates:
-                print(
-                    f"Error: {self.voters[i].name} did not cast a valid vote or voted for an invalid candidate.")
+            # Verification and Signing Phase
+            for i, (encrypted_ballot, private_key) in enumerate(self.ballots):
+                decrypted_ballot = self.voters[i].decrypt_message(encrypted_ballot,
+                                                                  private_key)
+                if self.voters[i].can_vote and decrypted_ballot not in self.candidates:
+                    print(
+                        f"Error: {self.voters[i].name} did not cast a valid vote or voted for an invalid candidate.")
 
-            # Verification of Signature
-            if i > 0 and not self.voters[i - 1].verify_signature(str(encrypted_ballot),
-                                                                 self.voters[
-                                                                     i].sign_message(
-                                                                     str(encrypted_ballot)),
-                                                                 self.voters[
-                                                                     i - 1].elgamal_public_key):
-                print(f"Error: Signature of {self.voters[i].name} is not valid.")
+                # Verification of Signature
+                if i > 0 and not self.voters[i - 1].verify_signature(str(encrypted_ballot),
+                                                                     self.voters[
+                                                                         i].sign_message(
+                                                                         str(encrypted_ballot)),
+                                                                     self.voters[
+                                                                         i - 1].elgamal_public_key):
+                    print(f"Error: Signature of {self.voters[i].name} is not valid.")
 
         # Counting Votes
         decrypted_ballots = [
