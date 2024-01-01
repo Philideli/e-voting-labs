@@ -1,7 +1,5 @@
 from Crypto.Cipher import PKCS1_OAEP
-from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA
-from Crypto.Signature import pkcs1_15
 
 
 class Voter:
@@ -12,31 +10,47 @@ class Voter:
         self.voter_id = id
         self.masked_messages = None  # To store the masked (encrypted) messages
         self.signed_messages = None  # To store the signed messages received from the Election Authority
+        # A random masking factor r
+        self.r = 5
 
     def generate_messages(self, candidates):
         messages = []
-        for candidate in candidates:
-            for i in range(1, 11):
+        for i in range(1, 11):
+            batch = []
+            for candidate in candidates:
                 message = candidate.id
-                messages.append(message)
+                batch.append(message)
+            messages.append(batch)
         return messages
 
-    def mask_messages(self, candidates, mask):
-        self.masked_messages = [self.mask_message(message, mask) for message in self.generate_messages(candidates)]
+    def mask_messages(self, candidates, public_key):
+        self.masked_messages = [self.mask_message(message, public_key) for message in
+                                self.generate_messages(candidates)]
 
-    def mask_message(self, message, mask):
-        # Perform masking using XOR operation
-        masked_message = ''.join(
-            chr(ord(char) ^ ord(mask_char)) for char, mask_char in zip(message, mask))
-        return masked_message
+    def mask_message(self, message: list[str], public_key: bytes) -> list[int]:
+        masked_values = []
+        for m in message:
+            key = RSA.import_key(public_key).public_key()
+            message_bytes = m.encode('utf-8')
 
-    def receive_signed_messages(self, signed_messages):
-        # Simulating receiving 9 out of 10 signed messages from EA
-        self.signed_messages = signed_messages
+            # Calculate the masked value: (m * r) ^ e mod n
+            m_r = int.from_bytes(message_bytes, 'big') * self.r
+            masked_value = pow(m_r, key.e, key.n) % key.n
+            masked_values.append(masked_value)
+        return masked_values
+
+    def receive_signed_messages(self, signed_messages, public_key):
+        key = RSA.import_key(public_key).public_key()
+        self.signed_messages = [s * pow(self.r, -1) % key.n for s in signed_messages]
 
     def choose_and_encrypt_ballot(self, choice, public_key):
-        chosen_ballot = str(choice)
-        cipher = PKCS1_OAEP.new(RSA.import_key(public_key))
+        key = RSA.import_key(public_key).public_key()
+        chosen_ballot = None
+        for s in self.signed_messages:
+            if s == choice:
+                chosen_ballot = str(s)
+                break
+        cipher = PKCS1_OAEP.new(key)
         encrypted_ballot = cipher.encrypt(chosen_ballot.encode())
         return encrypted_ballot
 
@@ -47,12 +61,12 @@ class Voter:
 
     def send_encrypted_ballot(self, authority):
         # Simulating sending the chosen and encrypted ballot to EA
-        chosen_ballot = self.choose_and_encrypt_ballot(self.election_vote, authority.public_key)
+        chosen_ballot = self.choose_and_encrypt_ballot(self.election_vote,
+                                                       authority.public_key)
         authority.receive_encrypted_ballot(chosen_ballot, self.voter_id)
 
     def prepare_for_voting(self, authority, candidates):
-        mask = "MASK"
-        self.mask_messages(mask, candidates)
+        self.mask_messages(candidates, authority.public_key)
         self.send_encrypted_messages(authority)
 
 
@@ -91,7 +105,7 @@ class ElectionAuthority:
         self.voters = voters
         self.registered_voters = set()  # To keep track of registered voters
 
-    def receive_masked_messages(self, masked_messages, voter):
+    def receive_masked_messages(self, masked_messages: list[int], voter):
         # Simulating receiving masked messages from a voter
         voter_id = voter.voter_id
         if voter_id not in self.registered_voters:
@@ -101,10 +115,14 @@ class ElectionAuthority:
             print("Duplicate voter ID. Ignoring the messages.")
 
     def send_signed_messages(self, masked_messages, voter):
-        # EA signs 9 out of 10 masked messages
-        h = SHA256.new(masked_messages[0])
-        signatures = [pkcs1_15.new(RSA.import_key(self.private_key)).sign(h)]
-        voter.receive_signed_messages(signatures)
+        # EA signs 1 out of 10 masked messages
+        signatures = []
+        for i in range(len(masked_messages[0])):
+            message = masked_messages[0][i]
+            key = RSA.import_key(self.private_key)
+            signature = pow(message, key.d) % key.n
+            signatures.append(signature)
+        voter.receive_signed_messages(signatures, self.public_key)
         print(f"Signed messages sent to {voter.voter_id}.")
 
     def receive_encrypted_ballot(self, encrypted_ballot, voter_id):
