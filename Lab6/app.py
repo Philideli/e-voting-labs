@@ -72,8 +72,14 @@ class ElectionCommission:
     def publish_results(self):
         # Оголошення результатів
         print("Election Results:")
+        results = {}
         for voter_id, vote in self.votes.items():
-            print(f"Voter {voter_id}: Voted for {vote['vote']}")
+            if vote['vote'] in results.keys():
+                results[vote['vote']] += 1
+            else:
+                results[vote['vote']] = 1
+        for candidate, votes in results.items():
+            print(f"Candidate {candidate}: {votes} votes")
 
 def main():
     # Ініціалізація органів
