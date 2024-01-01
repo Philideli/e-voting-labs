@@ -21,9 +21,14 @@ class Voter:
                 messages.append(message)
         return messages
 
-    def encrypt_messages(self, public_key, candidates):
-        cipher = PKCS1_OAEP.new(RSA.import_key(public_key))
-        self.masked_messages = [cipher.encrypt(message.encode()) for message in self.generate_messages(candidates)]
+    def mask_messages(self, candidates, mask):
+        self.masked_messages = [self.mask_message(message, mask) for message in self.generate_messages(candidates)]
+
+    def mask_message(self, message, mask):
+        # Perform masking using XOR operation
+        masked_message = ''.join(
+            chr(ord(char) ^ ord(mask_char)) for char, mask_char in zip(message, mask))
+        return masked_message
 
     def receive_signed_messages(self, signed_messages):
         # Simulating receiving 9 out of 10 signed messages from EA
@@ -46,7 +51,8 @@ class Voter:
         authority.receive_encrypted_ballot(chosen_ballot, self.voter_id)
 
     def prepare_for_voting(self, authority, candidates):
-        self.encrypt_messages(authority.public_key, candidates)
+        mask = "MASK"
+        self.mask_messages(mask, candidates)
         self.send_encrypted_messages(authority)
 
 
