@@ -79,15 +79,21 @@ def main():
     # Ініціалізація органів
     authority = VotingAuthority(num_voters=4)
     commission = ElectionCommission()
+    candidates = [f"Candidate{i}" for i in range(2)]
 
     # Реєстрація виборців та отримання токенів
     voter_tokens = [authority.get_voter_token(i) for i in range(4)]
-    
+
     # Голосування виборців
     encrypted_votes = []
     for token in voter_tokens:
         voter = Voter(voter_id=token["id"], token=token, public_key=token["public_key"])
-        encrypted_vote = voter.vote(candidate="Candidate1")
+        candidate_id = input(
+            f"Voter {voter.voter_id}, choose a candidate: {candidates} ")
+        if candidate_id not in candidates:
+            "Such candidates doesn't exist"
+            continue
+        encrypted_vote = voter.vote(candidate=candidate_id)
         encrypted_votes.append({"voter_id": voter.voter_id, "voter_public_key": voter.public_key, "encrypted_bulletin": encrypted_vote})
 
     # Збір голосів та оголошення результатів
